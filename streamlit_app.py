@@ -1,19 +1,11 @@
 """
 streamlit_app.py
------------------
+
 Streamlit front end for the Agentic AI eBook RAG chatbot.
 
 Calls rag_graph.run_query() directly (in-process), not through the FastAPI
 layer, so this works even if api.py isn't running.
 
-Note on "memory": each question is still answered independently -- the
-retriever has no knowledge of earlier turns, by design, since grounding
-each answer only in what's actually relevant to *that* question is what
-keeps this bot from hallucinating. The chat history below is a UI/display
-layer on top of that, not a change to the retrieval logic.
-
-Run:
-    streamlit run streamlit_app.py
 """
 
 import streamlit as st
@@ -29,14 +21,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ---------------------------------------------------------------------------
-# Cold-start guard: hosted platforms (Streamlit Cloud, HF Spaces, etc.) give
-# this app a fresh, empty container on every deploy/restart -- there's no
-# guarantee `python ingest.py` was ever run *inside* that container, even
-# though it was run locally. If the vector store is empty, build it now.
-# st.cache_resource makes this run exactly once per live app process, not
-# on every rerun/user.
-# ---------------------------------------------------------------------------
+
 @st.cache_resource(show_spinner=False)
 def ensure_knowledge_base_ready() -> int:
     count = vs.existing_vector_count()
@@ -49,9 +34,7 @@ def ensure_knowledge_base_ready() -> int:
 with st.spinner("Setting up the knowledge base (first run only, ~30-60s)..."):
     _vector_count = ensure_knowledge_base_ready()
 
-# ---------------------------------------------------------------------------
-# Styling
-# ---------------------------------------------------------------------------
+
 st.markdown(
     """
     <style>
@@ -139,9 +122,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------------------------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("### 📘 About")
     st.markdown(
@@ -165,9 +145,6 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# ---------------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------------
 st.markdown(
     """
     <div class="kv-hero">
@@ -180,15 +157,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------------------------------------------------------------------------
-# Confidence badge helper
-# ---------------------------------------------------------------------------
 def confidence_badge(confidence: float) -> str:
-    # Thresholds tuned for all-MiniLM-L6-v2 cosine scores, which on real
-    # (non-duplicate) query/passage pairs usually land in the 0.2-0.55
-    # range even for a good match -- a raw ">=0.6 for high" bar almost
-    # never fires in practice, which is why good answers were showing up
-    # as "Low confidence" before.
     if confidence >= 0.45:
         css_class, label = "high", "High confidence"
     elif confidence >= 0.22:
@@ -198,11 +167,8 @@ def confidence_badge(confidence: float) -> str:
     return f"<span class='kv-pill {css_class}'>{label}</span> <code>{confidence:.2f}</code>"
 
 
-# ---------------------------------------------------------------------------
-# Conversation state
-# ---------------------------------------------------------------------------
 if "messages" not in st.session_state:
-    st.session_state.messages = []  # list of {role, content, result?}
+    st.session_state.messages = []  
 
 for msg in st.session_state.messages:
     avatar = "🧑" if msg["role"] == "user" else "📘"
@@ -224,9 +190,6 @@ for msg in st.session_state.messages:
                         unsafe_allow_html=True,
                     )
 
-# ---------------------------------------------------------------------------
-# New query
-# ---------------------------------------------------------------------------
 query = st.chat_input("Ask a question about the eBook...")
 
 if query and query.strip():
