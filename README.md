@@ -8,6 +8,10 @@ A Retrieval-Augmented Generation (RAG) chatbot that answers questions **strictly
 ![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B)
 ![FAISS](https://img.shields.io/badge/Vector%20DB-Pinecone%20%7C%20FAISS-0EA5E9)
 
+# Screenshots
+
+📂 [View Screenshots](https://github.com/ShivaliGupta17/agentic-ai-rag/tree/main/screenshots)
+
 ---
 
 ## Table of Contents
