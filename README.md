@@ -1,6 +1,6 @@
 # 📘 Agentic AI eBook — RAG Chatbot
 
-A Retrieval-Augmented Generation (RAG) chatbot that answers questions **strictly from a single source document**—Konverge AI's *Agentic AI: An Executive's Guide* eBook. Instead of hallucinating, the chatbot refuses to answer whenever the requested information is not present in the document.
+A Retrieval-Augmented Generation (RAG) chatbot that answers questions **strictly from a single source document**—Konverge AI's *Agentic AI: An Executive's Guide* eBook. Instead of hallucinating, the chatbot answers only from the retrieved document context. If the requested information is unavailable, it responds with a refusal rather than generating unsupported content.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-6E56CF)
@@ -10,41 +10,32 @@ A Retrieval-Augmented Generation (RAG) chatbot that answers questions **strictly
 
 ---
 
-# 📑 Table of Contents
+## Table of Contents
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [How It Works](#how-it-works)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Setup Instructions](#setup-instructions)
-- [Running the Application](#running-the-application)
-- [API Usage](#api-usage)
-- [Sample Queries](#sample-queries)
-- [Deployment](#deployment)
-- [Future Improvements](#future-improvements)
+1. [Overview](#overview)
+2. [Architecture](#architecture)
+3. [Setup Instructions](#setup-instructions)
+4. [Running the Chatbot](#running-the-chatbot)
+5. [Sample Queries](#sample-queries)
+6. [Project Structure](#project-structure)
+7. [Deployment](#deployment)
 
 ---
 
 # Overview
 
-This project implements a **grounded RAG chatbot** that uses only the information contained in **Konverge AI's _Agentic AI: An Executive's Guide_**.
+| Component | Description |
+|-----------|-------------|
+| **Source Document** | Konverge AI's *Agentic AI: An Executive's Guide* (PDF) |
+| **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` |
+| **Vector Store** | Pinecone (Serverless) with automatic FAISS fallback |
+| **Workflow** | LangGraph (`retrieve → grade → generate`) |
+| **LLM** | Groq `llama-3.1-8b-instant` |
+| **Backend** | FastAPI |
+| **Frontend** | Streamlit |
+| **Hallucination Prevention** | LLM-based relevance grading + grounded prompt |
 
-Unlike conventional chatbots, it **never relies on the LLM's internal knowledge**. Every response must be supported by retrieved passages from the document.
-
-If the relevant information cannot be found, the chatbot returns a polite refusal instead of generating a potentially incorrect answer.
-
-### Features
-
-- 📄 Single-document RAG pipeline
-- 🧠 Local embedding generation (no embedding API required)
-- 🔎 Pinecone vector database with automatic FAISS fallback
-- ⚡ LangGraph state-machine orchestration
-- 🤖 Groq Llama 3.1 for answer generation
-- 🌐 FastAPI backend
-- 💬 Streamlit chat interface
-- 🚫 Hallucination prevention using dual grounding checks
-- 📊 Confidence score with retrieved source chunks
+This project implements a Retrieval-Augmented Generation (RAG) pipeline that answers questions using only the provided eBook. Every response is grounded in retrieved document chunks. If the requested information is not available in the document, the chatbot returns a refusal instead of generating an unsupported answer.
 
 ---
 
@@ -52,175 +43,57 @@ If the relevant information cannot be found, the chatbot returns a polite refusa
 
 ```mermaid
 flowchart TD
+    A[PDF: Agentic AI eBook] -->|PyMuPDF Extraction| B[Text Chunking]
+    B --> C[MiniLM Embeddings]
+    C --> D{Vector Store}
 
-A[PDF Document] --> B[PyMuPDF Extraction]
+    D -->|PINECONE_API_KEY| E[Pinecone]
+    D -->|No Key| F[FAISS]
 
-B --> C[Recursive Character Splitter]
+    G[User Query] --> H[Top-k Similarity Search]
+    E --> H
+    F --> H
 
-C --> D[MiniLM Embeddings]
+    H --> I[LLM Relevance Grading]
 
-D --> E{Vector Store}
+    I -->|Relevant| J[Groq Llama 3]
+    I -->|Not Relevant| K[Refusal Response]
 
-E -->|PINECONE_API_KEY| F[Pinecone]
-
-E -->|No API Key| G[FAISS]
-
-H[User Question] --> I[Retrieve Top-k Chunks]
-
-F --> I
-
-G --> I
-
-I --> J[LLM Relevance Grader]
-
-J -->|Relevant| K[Groq Llama 3]
-
-J -->|No Relevant Context| L[Fallback Response]
-
-K --> M[Grounded Answer]
-
-L --> M
+    J --> L[Grounded Answer]
+    K --> L
 ```
 
----
+### Document Ingestion
 
-# How It Works
+The PDF is processed page-by-page using **PyMuPDF**. Each page is split into overlapping chunks using LangChain's `RecursiveCharacterTextSplitter`, ensuring contextual continuity between chunks.
 
-## 1. Document Ingestion
+### Embedding Generation
 
-The eBook is downloaded and processed page-by-page using **PyMuPDF**.
-
-Each page is divided into overlapping chunks using LangChain's `RecursiveCharacterTextSplitter`.
-
-Chunk overlap prevents important information from being split across chunk boundaries.
-
----
-
-## 2. Embedding Generation
-
-Each chunk is converted into a **384-dimensional vector** using:
+Each chunk is converted into a vector using the local embedding model:
 
 ```
 sentence-transformers/all-MiniLM-L6-v2
 ```
 
-Embeddings are generated locally, so no embedding API key is required.
+Since embeddings are generated locally, no embedding API key is required.
 
----
+### Vector Store
 
-## 3. Vector Storage
+The project supports two vector databases:
 
-The project supports two vector databases.
+- **Pinecone (Serverless)**
+- **FAISS (Automatic Local Fallback)**
 
-### Pinecone
+Both expose the same interface through `vector_store.py`.
 
-If `PINECONE_API_KEY` is provided:
+### LangGraph Workflow
 
-- Serverless index
-- Persistent cloud storage
-- Fast similarity search
+The chatbot follows four stages:
 
-### FAISS
-
-If no Pinecone key is available:
-
-- Local vector database
-- Runs completely offline
-- No additional cost
-
-Both backends expose the same API through `vector_store.py`.
-
----
-
-## 4. Retrieval
-
-For every user query:
-
-- Query embedding is generated
-- Top-5 most similar chunks are retrieved
-- Cosine similarity is used for ranking
-
----
-
-## 5. Relevance Grading
-
-Instead of trusting similarity alone, every retrieved chunk is evaluated by the LLM.
-
-The grader answers:
-
-> "Does this passage actually help answer the user's question?"
-
-Chunks that merely contain similar words are discarded.
-
----
-
-## 6. Grounded Answer Generation
-
-Only the filtered chunks are passed to Groq Llama 3.
-
-The system prompt explicitly instructs the model to:
-
-- Use only the provided context
-- Never use outside knowledge
-- Refuse if the answer cannot be found
-
----
-
-## 7. Fallback
-
-If no chunk survives relevance grading, the chatbot returns:
-
-> "I couldn't find that information in the provided document."
-
-No hallucinated answers are generated.
-
----
-
-# Tech Stack
-
-| Component | Technology |
-|------------|------------|
-| Programming Language | Python 3.10+ |
-| LLM | Groq Llama-3.1-8B-Instant |
-| Orchestration | LangGraph |
-| Framework | LangChain |
-| Embeddings | all-MiniLM-L6-v2 |
-| Vector Database | Pinecone / FAISS |
-| Backend | FastAPI |
-| Frontend | Streamlit |
-| PDF Processing | PyMuPDF |
-| Environment Management | python-dotenv |
-
----
-
-# Project Structure
-
-```text
-agentic-ai-rag/
-│
-├── api.py
-├── ingest.py
-├── rag_graph.py
-├── vector_store.py
-├── streamlit_app.py
-├── requirements.txt
-├── sample_queries.md
-├── .env.example
-├── README.md
-│
-└── data/
-```
-
-### File Description
-
-| File | Purpose |
-|------|----------|
-| `ingest.py` | Downloads the PDF, chunks it, creates embeddings, and stores vectors |
-| `vector_store.py` | Common abstraction for Pinecone and FAISS |
-| `rag_graph.py` | LangGraph retrieval → grading → generation pipeline |
-| `api.py` | FastAPI backend (`POST /chat`) |
-| `streamlit_app.py` | Interactive chat interface |
-| `sample_queries.md` | Example questions and outputs |
+- **Retrieve** – Retrieves Top-k relevant chunks.
+- **Grade** – Uses the LLM to remove irrelevant chunks.
+- **Generate** – Produces an answer using only the filtered context.
+- **Fallback** – Returns a refusal when no relevant information exists.
 
 ---
 
@@ -233,8 +106,6 @@ git clone https://github.com/<your-username>/agentic-ai-rag.git
 
 cd agentic-ai-rag
 ```
-
----
 
 ## 2. Create a Virtual Environment
 
@@ -254,19 +125,15 @@ python -m venv venv
 source venv/bin/activate
 ```
 
----
-
 ## 3. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
-
 ## 4. Configure Environment Variables
 
-Copy the template
+Copy the environment template:
 
 ```bash
 cp .env.example .env
@@ -276,37 +143,32 @@ Edit `.env`
 
 ```env
 GROQ_API_KEY=your_groq_api_key
-
-PINECONE_API_KEY=your_pinecone_key
+PINECONE_API_KEY=your_pinecone_api_key
 ```
 
 Leave `PINECONE_API_KEY` empty to automatically use FAISS.
 
----
-
-## 5. Build the Vector Store
-
-Run once:
+## 5. Build the Vector Index
 
 ```bash
 python ingest.py
 ```
 
-The script:
+The ingestion process:
 
-- Downloads the eBook
+- Downloads the PDF
 - Extracts text
 - Splits into chunks
 - Generates embeddings
 - Stores vectors
 
-If the vector database already exists, ingestion is skipped automatically.
+Re-running the script is safe because it skips ingestion if the vector store already exists.
 
 ---
 
-# Running the Application
+# Running the Chatbot
 
-## Streamlit UI
+## Option 1 – Streamlit
 
 ```bash
 streamlit run streamlit_app.py
@@ -323,39 +185,23 @@ Features:
 - Chat interface
 - Confidence score
 - Retrieved document chunks
-- Clean conversation history
+- Conversation history
 
 ---
 
-## FastAPI Server
+## Option 2 – FastAPI
 
 ```bash
 uvicorn api:app --reload
 ```
 
-Open:
-
-```
-http://localhost:8000
-```
-
-Swagger documentation:
-
-```
-http://localhost:8000/docs
-```
-
----
-
-# API Usage
-
-### Endpoint
+API Endpoint
 
 ```
 POST /chat
 ```
 
-### Request
+Request
 
 ```json
 {
@@ -363,7 +209,7 @@ POST /chat
 }
 ```
 
-### Response
+Response
 
 ```json
 {
@@ -388,11 +234,36 @@ POST /chat
 | What is Agentic AI? | Definition retrieval |
 | How is Agentic AI different from an LLM? | Comparison |
 | Which industries are discussed? | Information extraction |
-| What productivity improvement is mentioned? | Numerical retrieval |
-| What are the seven layers of a multi-agent system? | Structural retrieval |
+| What productivity improvement is mentioned? | Numeric retrieval |
+| What are the seven layers of a multi-agent architecture? | Structural retrieval |
 | What is the capital of France? | Hallucination prevention |
 
-The final query demonstrates the chatbot's refusal mechanism.
+---
+
+# Project Structure
+
+```text
+agentic-ai-rag/
+├── api.py
+├── ingest.py
+├── rag_graph.py
+├── vector_store.py
+├── streamlit_app.py
+├── requirements.txt
+├── sample_queries.md
+├── .env.example
+├── README.md
+└── data/
+```
+
+| File | Description |
+|------|-------------|
+| `ingest.py` | Downloads the PDF, creates chunks, generates embeddings, and stores vectors |
+| `vector_store.py` | Common abstraction for Pinecone and FAISS |
+| `rag_graph.py` | LangGraph workflow (`retrieve → grade → generate`) |
+| `api.py` | FastAPI backend |
+| `streamlit_app.py` | Streamlit chat interface |
+| `sample_queries.md` | Example queries and outputs |
 
 ---
 
@@ -400,62 +271,22 @@ The final query demonstrates the chatbot's refusal mechanism.
 
 ## Hugging Face Spaces
 
-- Select **Streamlit SDK**
-- Push the repository
-- Add `GROQ_API_KEY` as a secret
+- Choose the **Streamlit SDK**
+- Push this repository
+- Add `GROQ_API_KEY` as a repository secret
 - Optionally add `PINECONE_API_KEY`
-- Run `python ingest.py` once during build
-
----
+- Run `python ingest.py` once before serving
 
 ## Render
 
-Deploy:
-
-- FastAPI as a Web Service
+Deploy the FastAPI application using:
 
 ```bash
 uvicorn api:app --host 0.0.0.0 --port $PORT
 ```
 
-Optionally deploy the Streamlit interface as a separate service.
-
-Run `ingest.py` before the application starts to populate the vector store.
+Run `python ingest.py` during deployment so the vector database is populated before the application starts.
 
 ---
 
-# Future Improvements
-
-- Multi-document retrieval
-- Citation highlighting
-- Conversation memory
-- Query rewriting
-- Hybrid keyword + semantic search
-- Streaming token generation
-- Docker support
-- Authentication
-- Source document upload via UI
-
----
-
-# Key Highlights
-
-- ✅ Hallucination-resistant RAG chatbot
-- ✅ LangGraph state-machine workflow
-- ✅ Groq Llama 3.1 integration
-- ✅ Pinecone with automatic FAISS fallback
-- ✅ Local MiniLM embeddings
-- ✅ FastAPI REST API
-- ✅ Streamlit web interface
-- ✅ Confidence scoring
-- ✅ Grounded responses only
-- ✅ Fully deployable on free-tier services
-
----
-
-## License
-
-This project is intended for educational and demonstration purposes.
-
-The source document (**Konverge AI – Agentic AI: An Executive's Guide**) remains the intellectual property of its respective owner.
- 
+This project demonstrates a production-style Retrieval-Augmented Generation (RAG) pipeline with LangGraph orchestration, Groq Llama 3 integration, Pinecone/FAISS vector search, LLM-based relevance grading, and grounded answer generation to minimize hallucinations.
