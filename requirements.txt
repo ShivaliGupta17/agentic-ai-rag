@@ -1,0 +1,33 @@
+# PDF extraction
+PyMuPDF==1.24.10
+
+# Chunking
+langchain==0.3.7
+langchain-text-splitters==0.3.2
+tiktoken==0.8.0
+
+# Local, no-API-key embeddings
+sentence-transformers==3.2.1
+
+# Vector DBs
+pinecone==5.3.1
+faiss-cpu==1.9.0
+
+# LangGraph pipeline
+langgraph==0.2.53
+
+# LLM generation
+groq==0.13.0
+
+# API layer
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.9.2
+
+# UI
+streamlit==1.40.1
+
+# Utilities
+python-dotenv==1.0.1
+requests==2.32.3
+numpy==1.26.4
